@@ -1,0 +1,84 @@
+# Build directories
+build/
+bin/
+out/
+cmake-build-*/
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Compiled files
+*.o
+*.ko
+*.obj
+*.elf
+*.ilk
+*.map
+*.exp
+*.gch
+*.pch
+*.lib
+*.a
+*.la
+*.lo
+*.dll
+*.so
+*.so.*
+*.dylib
+
+# Executables
+*.exe
+*.out
+*.app
+video_player
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+
+# Dependency directories
+uWebSockets/
+dependencies/
+
+# Debug files
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# Performance logs
+*.log
+performance_*.txt
+performance_comparison.png
+
+# Media files
+*.mp4
+*.mkv
+*.avi
+*.mov
+*.m4v
+*.webm
+!assets/sample.mp4  # Décommenter si vous voulez inclure une vidéo de test
+
+# Environment specific
+.env
+.env.local
+*.local
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db 
