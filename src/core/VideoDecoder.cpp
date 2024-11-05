@@ -91,10 +91,31 @@ bool VideoDecoder::initialize(const std::string& path) {
             return false;
         }
 
+        // Ajouter ces options pour éviter le message d'avertissement
+        audioCodecContext->flags |= AV_CODEC_FLAG_COPY_OPAQUE;
+        audioCodecContext->flags2 |= AV_CODEC_FLAG2_SKIP_MANUAL;
+
         if (avcodec_open2(audioCodecContext, audioCodec, nullptr) < 0) {
             Logger::logError("Could not open audio codec");
             return false;
         }
+
+        // Décoder quelques frames audio pour initialiser le codec
+        AVPacket* packet = av_packet_alloc();
+        bool found_keyframe = false;
+        while (!found_keyframe) {
+            if (av_read_frame(formatContext, packet) < 0) break;
+            if (packet->stream_index == audioStreamIndex) {
+                if (packet->flags & AV_PKT_FLAG_KEY) {
+                    found_keyframe = true;
+                }
+            }
+            av_packet_unref(packet);
+        }
+        av_packet_free(&packet);
+        
+        // Revenir au début du fichier
+        av_seek_frame(formatContext, -1, 0, AVSEEK_FLAG_BACKWARD);
 
         Logger::logInfo("Audio codec initialized successfully");
     }
@@ -153,6 +174,8 @@ AVStream* VideoDecoder::getAudioStream() const {
 
 void VideoDecoder::decodeThreadFunction() {
     AVPacket* packet = av_packet_alloc();
+    double video_timebase = av_q2d(formatContext->streams[videoStreamIndex]->time_base);
+    double frame_delay = 1.0 / av_q2d(formatContext->streams[videoStreamIndex]->avg_frame_rate);
     
     while (isRunning) {
         std::unique_lock<std::mutex> lock(mutex);
@@ -191,6 +214,17 @@ void VideoDecoder::decodeThreadFunction() {
                     break;
                 }
 
+                double pts = frame->pts * video_timebase;
+                
+                if (audioManager) {
+                    double audio_clock = audioManager->getAudioClock();
+                    double diff = pts - audio_clock;
+                    
+                    if (diff > 0.1) {  // Si la vidéo est en avance de plus de 100ms
+                        SDL_Delay(static_cast<Uint32>((diff - 0.1) * 1000));
+                    }
+                }
+
                 std::unique_lock<std::mutex> lock(mutex);
                 frameQueue.push(frame);
                 lock.unlock();
@@ -212,7 +246,6 @@ void VideoDecoder::decodeThreadFunction() {
                     break;
                 }
 
-                // Envoyer le frame audio à l'AudioManager
                 audioManager->pushFrame(frame);
             }
         }

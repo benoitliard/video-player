@@ -23,6 +23,7 @@ public:
     
     static void audioCallback(void* userdata, Uint8* stream, int len);
     void pushFrame(AVFrame* frame);
+    double getAudioClock() const;
 
 private:
     struct AudioState {

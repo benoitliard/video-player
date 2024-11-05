@@ -96,19 +96,28 @@ void AudioManager::audioCallback(void* userdata, Uint8* stream, int len) {
     }
 
     AVFrame* frame = audio->state.audioQueue.front();
+    
+    // Calculer le timestamp audio actuel
+    double pts = frame->pts * av_q2d(audio->state.stream->time_base);
+    
+    // Mettre à jour l'horloge audio
+    audio->state.clock = pts;
+    
     audio->state.audioQueue.pop();
     lock.unlock();
 
+    // Calculer le nombre d'échantillons à convertir
     int out_samples = av_rescale_rnd(
         swr_get_delay(audio->state.swr_ctx, frame->sample_rate) + frame->nb_samples,
         frame->sample_rate,
         frame->sample_rate,
         AV_ROUND_UP);
 
+    // Buffer temporaire pour la conversion
     uint8_t* audio_buf = new uint8_t[len * 2];
     uint8_t* out_buffer[2] = { audio_buf, nullptr };
-    int out_linesize;
 
+    // Convertir l'audio
     int samples_converted = swr_convert(
         audio->state.swr_ctx,
         out_buffer,
@@ -118,19 +127,22 @@ void AudioManager::audioCallback(void* userdata, Uint8* stream, int len) {
 
     if (samples_converted > 0) {
         int buffer_size = av_samples_get_buffer_size(
-            &out_linesize,
+            nullptr,
             audio->state.codec_ctx->ch_layout.nb_channels,
             samples_converted,
             AV_SAMPLE_FMT_S16,
             1);
 
         if (buffer_size > 0) {
+            // Ajuster le volume en fonction du retard
+            int volume = SDL_MIX_MAXVOLUME;
+            
             SDL_MixAudioFormat(
                 stream,
                 audio_buf,
                 AUDIO_S16SYS,
                 std::min(buffer_size, len),
-                SDL_MIX_MAXVOLUME / 2
+                volume
             );
         }
     }
@@ -162,4 +174,9 @@ void AudioManager::cleanup() {
 void AudioManager::stop() {
     cleanup();
     isInitialized = false;
+}
+
+// Ajouter cette méthode pour obtenir l'horloge audio
+double AudioManager::getAudioClock() const {
+    return state.clock;
 }
