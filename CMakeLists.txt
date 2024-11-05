@@ -24,32 +24,47 @@ pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
 # Find SDL2
 find_package(SDL2 REQUIRED)
 
-# Find libavutil
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(AVUTIL REQUIRED libavutil)
-
-# Define executable
-add_executable(video_player
+# Définir les fichiers source
+set(SOURCES
     src/main.cpp
     src/VideoPlayer.cpp
+    src/core/AudioManager.cpp
+    src/core/VideoDecoder.cpp
+    src/core/Renderer.cpp
+    src/utils/Logger.cpp
 )
+
+# Définir les fichiers header
+set(HEADERS
+    src/VideoPlayer.h
+    src/core/AudioManager.h
+    src/core/VideoDecoder.h
+    src/core/Renderer.h
+    src/utils/Logger.h
+)
+
+# Define executable
+add_executable(video_player ${SOURCES} ${HEADERS})
 
 # Include directories
 target_include_directories(video_player PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/utils
     ${SDL2_INCLUDE_DIRS}
     ${FFMPEG_INCLUDE_DIRS}
 )
 
-# Link libraries explicitly
+# Link libraries
 target_link_libraries(video_player PRIVATE
     ${SDL2_LIBRARIES}
     PkgConfig::FFMPEG
-    ${AVCODEC_LIBRARIES}
-    ${AVFORMAT_LIBRARIES}
-    ${SWSCALE_LIBRARIES}
-    ${SWRESAMPLE_LIBRARIES}
-    ${AVUTIL_LIBRARIES}
+    avcodec
+    avformat
+    avutil
+    swscale
+    swresample
+    avfilter
 )
 
 # Set RPi specific flags
