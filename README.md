@@ -1,7 +1,8 @@
 # Lecteur Vidéo 4K pour Raspberry Pi 5
 
-Un lecteur vidéo haute performance optimisé pour le Raspberry Pi 5, capable de lire des vidéos 4K avec synchronisation audio/vidéo.
+Un lecteur vidéo haute performance optimisé pour le Raspberry Pi 5, capable de lire des vidéos 4K avec synchronisation audio/vidéo et contrôle via WebSocket.
 
+Utilisation pour installation permanente sur Raspberry Pi 5 (video mapping)
 ## Architecture
 
 ```mermaid

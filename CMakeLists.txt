@@ -39,6 +39,14 @@ find_package(ZLIB REQUIRED)
 # Find Libuv
 pkg_check_modules(LIBUV REQUIRED libuv)
 
+# Find websocketpp
+find_path(WEBSOCKETPP_INCLUDE_DIR websocketpp/server.hpp
+    PATHS /usr/local/include /usr/include)
+
+if(NOT WEBSOCKETPP_INCLUDE_DIR)
+    message(FATAL_ERROR "websocketpp not found")
+endif()
+
 # Définir les fichiers source
 set(SOURCES
     src/main.cpp
@@ -46,6 +54,7 @@ set(SOURCES
     src/core/AudioManager.cpp
     src/core/VideoDecoder.cpp
     src/core/Renderer.cpp
+    src/core/WebSocketController.cpp
     src/utils/Logger.cpp
 )
 
@@ -55,6 +64,7 @@ set(HEADERS
     src/core/AudioManager.h
     src/core/VideoDecoder.h
     src/core/Renderer.h
+    src/core/WebSocketController.h
     src/utils/Logger.h
 )
 
@@ -69,6 +79,7 @@ target_include_directories(video_player PRIVATE
     ${SDL2_INCLUDE_DIRS}
     ${FFMPEG_INCLUDE_DIRS}
     ${JSONCPP_INCLUDE_DIRS}
+    ${WEBSOCKETPP_INCLUDE_DIR}
     /usr/local/include  # Pour uWebSockets
 )
 

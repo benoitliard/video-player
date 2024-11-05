@@ -11,7 +11,7 @@ class VideoPlayer;
 class WebSocketController {
 public:
     WebSocketController(VideoPlayer* player);
-    ~WebSocketController();
+    virtual ~WebSocketController() = default;
 
     bool initialize(const std::string& address = "0.0.0.0", uint16_t port = 9002);
     void start();
@@ -27,16 +27,15 @@ private:
     void onMessage(ConnectionHdl hdl, MessagePtr msg);
     bool validateAuth(const std::string& token);
 
-    Server server;
-    VideoPlayer* player;
-    std::string authToken;
-    std::map<void*, bool> connections;
-    bool isRunning;
-
-    // Commandes supportées
     void handlePlayCommand();
     void handlePauseCommand();
     void handleStopCommand();
     void handleResetCommand();
     void handleVolumeCommand(int volume);
+
+    Server server;
+    VideoPlayer* player;
+    std::string authToken;
+    std::map<void*, bool> connections;
+    bool isRunning;
 }; 

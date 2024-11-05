@@ -3,24 +3,22 @@
 #include "../utils/Logger.h"
 #include <openssl/sha.h>
 #include <iomanip>
+#include <random>
 
 WebSocketController::WebSocketController(VideoPlayer* p) 
     : player(p), isRunning(false) {
-    // Générer un token aléatoire au démarrage
-    unsigned char hash[SHA256_DIGEST_LENGTH];
-    std::string baseToken = std::to_string(std::time(nullptr));
-    SHA256_CTX sha256;
-    SHA256_Init(&sha256);
-    SHA256_Update(&sha256, baseToken.c_str(), baseToken.length());
-    SHA256_Final(hash, &sha256);
+    // Utiliser une méthode plus simple pour générer le token
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dis(0, 15);
     
     std::stringstream ss;
-    for(int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
-        ss << std::hex << std::setw(2) << std::setfill('0') << (int)hash[i];
+    for(int i = 0; i < 32; i++) {
+        ss << std::hex << dis(gen);
     }
     authToken = ss.str();
     
-    Logger::logInfo("WebSocket auth token: " + authToken);
+    Logger::logInfo("WebSocket auth token generated");
 }
 
 bool WebSocketController::initialize(const std::string& address, uint16_t port) {
@@ -36,6 +34,7 @@ bool WebSocketController::initialize(const std::string& address, uint16_t port) 
             std::placeholders::_1, std::placeholders::_2));
 
         server.listen(port);
+        Logger::logInfo("WebSocket server listening on port " + std::to_string(port));
         return true;
     } catch (const std::exception& e) {
         Logger::logError("WebSocket initialization failed: " + std::string(e.what()));
@@ -43,22 +42,51 @@ bool WebSocketController::initialize(const std::string& address, uint16_t port) 
     }
 }
 
+void WebSocketController::start() {
+    if (!isRunning) {
+        isRunning = true;
+        server.start_accept();
+        server.run();
+    }
+}
+
+void WebSocketController::stop() {
+    if (isRunning) {
+        isRunning = false;
+        server.stop();
+    }
+}
+
+void WebSocketController::onOpen(ConnectionHdl hdl) {
+    Logger::logInfo("WebSocket connection opened");
+    connections[hdl.lock().get()] = true;
+}
+
+void WebSocketController::onClose(ConnectionHdl hdl) {
+    Logger::logInfo("WebSocket connection closed");
+    connections.erase(hdl.lock().get());
+}
+
 void WebSocketController::onMessage(ConnectionHdl hdl, MessagePtr msg) {
     try {
         Json::Value root;
         Json::Reader reader;
         if (!reader.parse(msg->get_payload(), root)) {
+            Logger::logError("Failed to parse WebSocket message");
             return;
         }
 
         // Vérifier l'authentification
-        if (!root.isMember("token") || !validateAuth(root["token"].asString())) {
+        if (!root.isMember("token") || root["token"].asString() != authToken) {
+            Logger::logError("Invalid WebSocket authentication");
             server.close(hdl, websocketpp::close::status::policy_violation, 
                         "Invalid authentication");
             return;
         }
 
         std::string command = root["command"].asString();
+        Logger::logInfo("Received command: " + command);
+
         if (command == "play") handlePlayCommand();
         else if (command == "pause") handlePauseCommand();
         else if (command == "stop") handleStopCommand();
