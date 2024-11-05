@@ -1,7 +1,7 @@
 #include "AudioManager.h"
 #include "../utils/Logger.h"
 
-AudioManager::AudioManager() : deviceId(0), isInitialized(false) {
+AudioManager::AudioManager() : deviceId(0), volume(1.0f), initialized(false) {
     state.swr_ctx = nullptr;
     state.stream = nullptr;
     state.codec_ctx = nullptr;
@@ -70,14 +70,14 @@ bool AudioManager::initialize(AVCodecContext* codecContext, AVStream* stream) {
     }
 
     Logger::logInfo("Audio resampler initialized");
-    isInitialized = true;
+    initialized = true;
     SDL_PauseAudioDevice(deviceId, 0);
     Logger::logInfo("Audio playback started");
     return true;
 }
 
 void AudioManager::pushFrame(AVFrame* frame) {
-    if (!isInitialized) return;
+    if (!initialized) return;
 
     std::unique_lock<std::mutex> lock(state.audioMutex);
     state.audioQueue.push(frame);
@@ -96,58 +96,57 @@ void AudioManager::audioCallback(void* userdata, Uint8* stream, int len) {
     }
 
     AVFrame* frame = audio->state.audioQueue.front();
-    
-    // Calculer le timestamp audio actuel
-    double pts = frame->pts * av_q2d(audio->state.stream->time_base);
-    
-    // Mettre à jour l'horloge audio
-    audio->state.clock = pts;
-    
-    audio->state.audioQueue.pop();
-    lock.unlock();
+    if (!frame) {
+        audio->state.audioQueue.pop();
+        return;
+    }
 
     // Calculer le nombre d'échantillons à convertir
-    int out_samples = av_rescale_rnd(
-        swr_get_delay(audio->state.swr_ctx, frame->sample_rate) + frame->nb_samples,
-        frame->sample_rate,
-        frame->sample_rate,
-        AV_ROUND_UP);
+    int out_samples = frame->nb_samples;
 
-    // Buffer temporaire pour la conversion
-    uint8_t* audio_buf = new uint8_t[len * 2];
-    uint8_t* out_buffer[2] = { audio_buf, nullptr };
-
-    // Convertir l'audio
-    int samples_converted = swr_convert(
-        audio->state.swr_ctx,
-        out_buffer,
+    // Allouer le buffer temporaire avec alignement
+    uint8_t* buffer = nullptr;
+    int buffer_size = av_samples_get_buffer_size(
+        nullptr,
+        2,  // Toujours en stéréo
         out_samples,
-        (const uint8_t**)frame->data,
-        frame->nb_samples);
+        AV_SAMPLE_FMT_S16,
+        1  // Alignement sur 1 byte pour plus de sécurité
+    );
 
-    if (samples_converted > 0) {
-        int buffer_size = av_samples_get_buffer_size(
-            nullptr,
-            audio->state.codec_ctx->ch_layout.nb_channels,
-            samples_converted,
-            AV_SAMPLE_FMT_S16,
-            1);
-
-        if (buffer_size > 0) {
-            // Ajuster le volume en fonction du retard
-            int volume = SDL_MIX_MAXVOLUME;
-            
-            SDL_MixAudioFormat(
-                stream,
-                audio_buf,
-                AUDIO_S16SYS,
-                std::min(buffer_size, len),
-                volume
+    if (buffer_size > 0) {
+        buffer = reinterpret_cast<uint8_t*>(av_malloc(buffer_size));
+        if (buffer) {
+            // Convertir l'audio
+            int samples_converted = swr_convert(
+                audio->state.swr_ctx,
+                &buffer,
+                out_samples,
+                (const uint8_t**)frame->data,
+                frame->nb_samples
             );
+
+            if (samples_converted > 0) {
+                int actual_buffer_size = samples_converted * 2 * sizeof(int16_t);
+                if (actual_buffer_size <= len) {
+                    SDL_MixAudioFormat(
+                        stream,
+                        buffer,
+                        AUDIO_S16SYS,
+                        actual_buffer_size,
+                        static_cast<int>(SDL_MIX_MAXVOLUME * audio->volume)
+                    );
+
+                    if (frame->pts != AV_NOPTS_VALUE) {
+                        audio->state.clock = frame->pts * av_q2d(audio->state.stream->time_base);
+                    }
+                }
+            }
+            av_freep(&buffer);
         }
     }
 
-    delete[] audio_buf;
+    audio->state.audioQueue.pop();
     av_frame_free(&frame);
 }
 
@@ -173,7 +172,7 @@ void AudioManager::cleanup() {
 
 void AudioManager::stop() {
     cleanup();
-    isInitialized = false;
+    initialized = false;
 }
 
 // Ajouter cette méthode pour obtenir l'horloge audio

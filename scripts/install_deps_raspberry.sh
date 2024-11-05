@@ -25,7 +25,9 @@ sudo apt-get install -y \
     build-essential \
     cmake \
     git \
-    pkg-config
+    pkg-config \
+    libasio-dev \
+    libboost-all-dev
 check_error "Failed to install development tools"
 
 # Install FFmpeg dependencies
@@ -56,8 +58,27 @@ echo -e "${YELLOW}Installing WebSocket dependencies...${NC}"
 sudo apt-get install -y \
     libssl-dev \
     zlib1g-dev \
-    libuv1-dev
+    libuv1-dev \
+    libjsoncpp-dev
 check_error "Failed to install WebSocket dependencies"
+
+# Install websocketpp from source
+echo -e "${YELLOW}Installing websocketpp...${NC}"
+if [ ! -d "websocketpp" ]; then
+    git clone https://github.com/zaphoyd/websocketpp.git
+    check_error "Failed to clone websocketpp"
+    
+    cd websocketpp
+    mkdir build
+    cd build
+    cmake ..
+    check_error "Failed to configure websocketpp"
+    
+    sudo make install
+    check_error "Failed to install websocketpp"
+    
+    cd ../..
+fi
 
 # Install uWebSockets from source
 echo -e "${YELLOW}Installing uWebSockets...${NC}"
@@ -68,24 +89,19 @@ if [ ! -d "uWebSockets" ]; then
     sudo rm -f /usr/local/lib/libusockets.a
     sudo rm -f /usr/local/include/libusockets.h
 
-    # Clone repositories
     git clone --recursive https://github.com/uNetworking/uWebSockets.git
     check_error "Failed to clone uWebSockets"
     
-    # Build and install uSockets
     cd uWebSockets/uSockets
     make
     check_error "Failed to build uSockets"
     
-    # Install uSockets
     sudo cp uSockets.a /usr/local/lib/libusockets.a
     check_error "Failed to copy uSockets library"
     
-    # Install uSockets headers - Modified this part
     sudo cp -r src/* /usr/local/include/
     check_error "Failed to copy uSockets headers"
     
-    # Install uWebSockets
     cd ..
     sudo mkdir -p /usr/local/include/uWS
     sudo cp -r src/* /usr/local/include/uWS/

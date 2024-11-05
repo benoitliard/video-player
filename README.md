@@ -1,6 +1,8 @@
 # Lecteur Vidéo 4K pour Raspberry Pi 5
 
-Un lecteur vidéo haute performance optimisé pour le Raspberry Pi 5, capable de lire des vidéos 4K avec synchronisation audio/vidéo.
+Un lecteur vidéo haute performance optimisé pour le Raspberry Pi 5, capable de lire des vidéos 4K avec synchronisation audio/vidéo et contrôle via WebSocket.
+
+Utilisation pour installation permanente sur Raspberry Pi 5 (video mapping)
 
 ## Architecture
 
@@ -9,31 +11,91 @@ graph TD
     A[VideoPlayer] --> B[VideoDecoder]
     A --> C[AudioManager]
     A --> D[Renderer]
-    B --> E[FFmpeg Decoder]
-    C --> F[SDL Audio]
-    D --> G[SDL Video/KMSDRM]
-    B --> C
+    A --> E[WebSocketController]
+    B --> F[FFmpeg Decoder]
+    C --> G[SDL Audio]
+    D --> H[SDL Video/KMSDRM]
+    E --> I[WebSocket Server]
     B -.-> |Audio Frames| C
     B -.-> |Video Frames| D
+    I -.-> |Commands| A
 ```
 
-## Structure du Projet
+## Diagramme de Classes
+
+```mermaid
+classDiagram
+    class VideoPlayer {
+        -AudioManager audioManager
+        -VideoDecoder decoder
+        -Renderer renderer
+        -WebSocketController wsController
+        -bool isRunning
+        +initialize(string path, uint16_t port)
+        +play()
+        +pause()
+        +stop()
+        +reset()
+        +setVolume(int)
+    }
+    
+    class WebSocketController {
+        -Server server
+        -string authToken
+        -map connections
+        +initialize(string address, uint16_t port)
+        +start()
+        +stop()
+        -handleCommand(string)
+    }
+    
+    class VideoDecoder {
+        -AVFormatContext* formatContext
+        -AVCodecContext* codecContext
+        -queue~AVFrame*~ frameQueue
+        +initialize(string path)
+        +getNextFrame()
+        +startDecoding()
+        +stopDecoding()
+    }
+    
+    class AudioManager {
+        -SwrContext* swr_ctx
+        -SDL_AudioDeviceID deviceId
+        -queue~AVFrame*~ audioQueue
+        +initialize(AVCodecContext*, AVStream*)
+        +pushFrame(AVFrame*)
+        +getAudioClock()
+    }
+    
+    class Renderer {
+        -SDL_Window* window
+        -SDL_Renderer* renderer
+        -SDL_Texture* texture
+        -SwsContext* swsContext
+        +initialize(int width, int height)
+        +renderFrame(AVFrame*)
+    }
+    
+    VideoPlayer --> WebSocketController
+    VideoPlayer --> VideoDecoder
+    VideoPlayer --> AudioManager
+    VideoPlayer --> Renderer
 ```
-src/
-├── core/
-│   ├── AudioManager.cpp     # Gestion audio et synchronisation
-│   ├── AudioManager.h
-│   ├── VideoDecoder.cpp     # Décodage vidéo et audio
-│   ├── VideoDecoder.h
-│   ├── Renderer.cpp         # Rendu vidéo avec SDL/KMSDRM
-│   └── Renderer.h
-├── utils/
-│   ├── Logger.cpp           # Système de logging
-│   └── Logger.h
-├── VideoPlayer.cpp          # Classe principale
-├── VideoPlayer.h
-└── main.cpp
+
+## Contrôle via WebSocket
+
+Le lecteur peut être contrôlé à distance via WebSocket (port 9002 par défaut). Commandes disponibles :
+
+```json
+{"token": "votre_token", "command": "play"}
+{"token": "votre_token", "command": "pause"}
+{"token": "votre_token", "command": "stop"}
+{"token": "votre_token", "command": "reset"}
+{"token": "votre_token", "command": "volume", "value": 50}
 ```
+
+Le token d'authentification est généré au démarrage et affiché dans les logs.
 
 ## Caractéristiques
 
@@ -94,66 +156,12 @@ make -j4
 - Utilisation RAM : ~200MB pour du 4K
 - Synchronisation A/V : ±10ms
 
-## Diagramme de Classes
-
-```mermaid
-classDiagram
-    class VideoPlayer {
-        -AudioManager audioManager
-        -VideoDecoder decoder
-        -Renderer renderer
-        -bool isRunning
-        +initialize(string path)
-        +run()
-        +stop()
-    }
-    
-    class VideoDecoder {
-        -AVFormatContext* formatContext
-        -AVCodecContext* codecContext
-        -queue~AVFrame*~ frameQueue
-        +initialize(string path)
-        +getNextFrame()
-        +startDecoding()
-        +stopDecoding()
-    }
-    
-    class AudioManager {
-        -SwrContext* swr_ctx
-        -SDL_AudioDeviceID deviceId
-        -queue~AVFrame*~ audioQueue
-        +initialize(AVCodecContext*, AVStream*)
-        +pushFrame(AVFrame*)
-        +getAudioClock()
-    }
-    
-    class Renderer {
-        -SDL_Window* window
-        -SDL_Renderer* renderer
-        -SDL_Texture* texture
-        -SwsContext* swsContext
-        +initialize(int width, int height)
-        +renderFrame(AVFrame*)
-    }
-    
-    VideoPlayer --> VideoDecoder
-    VideoPlayer --> AudioManager
-    VideoPlayer --> Renderer
-```
-
-## Limitations Connues
-- Pas de contrôle de lecture (pause, seek)
-- Pas de support des sous-titres
-- Pas d'interface graphique de contrôle
 
 ## Contribution
 
 Les contributions sont les bienvenues ! Voici les domaines d'amélioration prioritaires :
-1. Support des sous-titres
-2. Interface de contrôle (pause, seek, volume)
 3. Optimisations supplémentaires pour le RPi 5
 4. Support de plus de formats de codecs
-5. Interface graphique minimaliste
 
 ## Licence
 

@@ -28,6 +28,21 @@ public:
     AVCodecContext* getAudioCodecContext() const { return audioCodecContext; }
     void setAudioManager(AudioManager* am) { audioManager = am; }
 
+    void seekToStart() {
+        if (formatContext) {
+            av_seek_frame(formatContext, -1, 0, AVSEEK_FLAG_BACKWARD);
+            avcodec_flush_buffers(codecContext);
+            if (audioCodecContext) {
+                avcodec_flush_buffers(audioCodecContext);
+            }
+        }
+    }
+
+    void reset() {
+        flushBuffers();
+        // Réinitialiser les autres états si nécessaire
+    }
+
 private:
     void decodeThreadFunction();
     
@@ -44,5 +59,10 @@ private:
     std::condition_variable condition;
     bool isRunning;
     
-    static constexpr size_t MAX_QUEUE_SIZE = 10;
+    static constexpr size_t MAX_QUEUE_SIZE = 30;
+    static constexpr size_t MIN_FRAMES_TO_START = 5;
+
+    void flushBuffers() {
+        avcodec_flush_buffers(codecContext);
+    }
 }; 
