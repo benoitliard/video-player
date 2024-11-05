@@ -77,9 +77,17 @@ void VideoPlayer::run() {
     while (isRunning) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_QUIT) {
-                stop();
-                return;
+            switch (event.type) {
+                case SDL_QUIT:
+                    stop();
+                    return;
+                case SDL_KEYDOWN:
+                    if (event.key.keysym.sym == SDLK_ESCAPE) {
+                        Logger::logInfo("ESC pressed, stopping playback...");
+                        stop();
+                        return;
+                    }
+                    break;
             }
         }
 
