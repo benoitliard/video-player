@@ -6,10 +6,10 @@ Perfect for permanent installations on Raspberry Pi 5 (video mapping, digital si
 
 <div align="center">
 
-[![Stars](https://img.shields.io/github/stars/your-username/rpi5-4k-player?style=for-the-badge)](https://github.com/your-username/rpi5-4k-player/stargazers)
-[![Forks](https://img.shields.io/github/forks/your-username/rpi5-4k-player?style=for-the-badge)](https://github.com/your-username/rpi5-4k-player/network/members)
-[![Issues](https://img.shields.io/github/issues/your-username/rpi5-4k-player?style=for-the-badge)](https://github.com/your-username/rpi5-4k-player/issues)
-[![License](https://img.shields.io/github/license/your-username/rpi5-4k-player?style=for-the-badge)](https://github.com/your-username/rpi5-4k-player/blob/main/LICENSE)
+[![Stars](https://img.shields.io/github/stars/benoitliard/video-player?style=for-the-badge)](https://github.com/benoitliard/video-player/stargazers)
+[![Forks](https://img.shields.io/github/forks/benoitliard/video-player?style=for-the-badge)](https://github.com/benoitliard/video-player/network/members)
+[![Issues](https://img.shields.io/github/issues/benoitliard/video-player?style=for-the-badge)](https://github.com/benoitliard/video-player/issues)
+[![License](https://img.shields.io/github/license/benoitliard/video-player?style=for-the-badge)](https://github.com/benoitliard/video-player/blob/main/LICENSE)
 
 </div>
 
@@ -207,5 +207,9 @@ Give a ⭐️ if this project helped you!
 <div align="center">
 Made with ❤️ for the Raspberry Pi community
 </div>
+
+## 📧 Contact
+
+- GitHub: [@benoitliard](https://github.com/benoitliard)
 
 
