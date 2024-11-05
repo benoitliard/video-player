@@ -7,6 +7,7 @@
 #include <queue>
 #include <mutex>
 #include <condition_variable>
+#include <atomic>
 
 class VideoPlayer {
 public:
@@ -16,6 +17,11 @@ public:
     bool initialize(const std::string& videoPath);
     void run();
     void stop();
+    void play();
+    void pause();
+    void reset();
+    void setVolume(int volume);
+    bool isPaused() const { return paused; }
 
 private:
     AudioManager audioManager;
@@ -49,4 +55,8 @@ private:
     static void audioCallback(void* userdata, Uint8* stream, int len);
     
     static constexpr size_t MAX_QUEUE_SIZE = 10;
+    
+    bool paused;
+    int volume;
+    std::atomic<bool> shouldReset;
 }; 

@@ -28,6 +28,16 @@ public:
     AVCodecContext* getAudioCodecContext() const { return audioCodecContext; }
     void setAudioManager(AudioManager* am) { audioManager = am; }
 
+    void seekToStart() {
+        if (formatContext) {
+            av_seek_frame(formatContext, -1, 0, AVSEEK_FLAG_BACKWARD);
+            avcodec_flush_buffers(codecContext);
+            if (audioCodecContext) {
+                avcodec_flush_buffers(audioCodecContext);
+            }
+        }
+    }
+
 private:
     void decodeThreadFunction();
     

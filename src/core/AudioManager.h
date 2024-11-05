@@ -25,6 +25,9 @@ public:
     void pushFrame(AVFrame* frame);
     double getAudioClock() const;
 
+    bool isInitialized() const { return initialized; }
+    void setVolume(float vol) { volume = vol; }
+
 private:
     struct AudioState {
         SwrContext *swr_ctx;
@@ -38,5 +41,6 @@ private:
     } state;
 
     SDL_AudioDeviceID deviceId;
-    bool isInitialized;
+    float volume;
+    bool initialized;
 }; 

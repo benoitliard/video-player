@@ -24,6 +24,21 @@ pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
 # Find SDL2
 find_package(SDL2 REQUIRED)
 
+# Find Boost
+find_package(Boost REQUIRED COMPONENTS system)
+
+# Find OpenSSL
+find_package(OpenSSL REQUIRED)
+
+# Find jsoncpp
+pkg_check_modules(JSONCPP REQUIRED jsoncpp)
+
+# Find ZLIB
+find_package(ZLIB REQUIRED)
+
+# Find Libuv
+pkg_check_modules(LIBUV REQUIRED libuv)
+
 # Définir les fichiers source
 set(SOURCES
     src/main.cpp
@@ -53,6 +68,8 @@ target_include_directories(video_player PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/utils
     ${SDL2_INCLUDE_DIRS}
     ${FFMPEG_INCLUDE_DIRS}
+    ${JSONCPP_INCLUDE_DIRS}
+    /usr/local/include  # Pour uWebSockets
 )
 
 # Link libraries
@@ -65,6 +82,14 @@ target_link_libraries(video_player PRIVATE
     swscale
     swresample
     avfilter
+    OpenSSL::SSL
+    OpenSSL::Crypto
+    ${JSONCPP_LIBRARIES}
+    pthread
+    ${Boost_LIBRARIES}
+    ${LIBUV_LIBRARIES}
+    ${ZLIB_LIBRARIES}
+    /usr/local/lib/libusockets.a  # Lien direct vers uSockets
 )
 
 # Set RPi specific flags

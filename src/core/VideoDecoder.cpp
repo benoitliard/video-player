@@ -2,11 +2,17 @@
 #include "AudioManager.h"
 #include "../utils/Logger.h"
 
+extern "C" {
+    #include <libavutil/imgutils.h>  // Ajout de cet include pour av_image_copy
+}
+
 VideoDecoder::VideoDecoder()
     : formatContext(nullptr)
     , codecContext(nullptr)
+    , audioCodecContext(nullptr)
     , videoStreamIndex(-1)
     , audioStreamIndex(-1)
+    , audioManager(nullptr)
     , isRunning(false) {
 }
 
@@ -45,12 +51,18 @@ bool VideoDecoder::initialize(const std::string& path) {
         return false;
     }
 
-    // Initialize video codec
+    // Vérifier le codec de la vidéo
     const AVCodec* videoCodec = avcodec_find_decoder(formatContext->streams[videoStreamIndex]->codecpar->codec_id);
     if (!videoCodec) {
         Logger::logError("Unsupported video codec");
         return false;
     }
+
+    Logger::logInfo("Video dimensions: " + std::to_string(formatContext->streams[videoStreamIndex]->codecpar->width) + 
+                   "x" + std::to_string(formatContext->streams[videoStreamIndex]->codecpar->height));
+    Logger::logInfo("Input pixel format: " + std::string(av_get_pix_fmt_name(
+        static_cast<AVPixelFormat>(formatContext->streams[videoStreamIndex]->codecpar->format))));
+    Logger::logInfo("Pixel format description: " + std::string(av_get_pix_fmt_name(AV_PIX_FMT_YUV420P)));
 
     codecContext = avcodec_alloc_context3(videoCodec);
     if (!codecContext) {
@@ -63,9 +75,9 @@ bool VideoDecoder::initialize(const std::string& path) {
         return false;
     }
 
-    // Set thread count for decoding
-    codecContext->thread_count = 4;
-    codecContext->thread_type = FF_THREAD_FRAME;
+    // Configuration du décodage - IMPORTANT
+    codecContext->thread_count = 1;  // Désactiver le multi-threading pour éviter les problèmes
+    codecContext->flags |= AV_CODEC_FLAG_LOW_DELAY;  // Réduire la latence
 
     if (avcodec_open2(codecContext, videoCodec, nullptr) < 0) {
         Logger::logError("Could not open video codec");
@@ -91,31 +103,10 @@ bool VideoDecoder::initialize(const std::string& path) {
             return false;
         }
 
-        // Ajouter ces options pour éviter le message d'avertissement
-        audioCodecContext->flags |= AV_CODEC_FLAG_COPY_OPAQUE;
-        audioCodecContext->flags2 |= AV_CODEC_FLAG2_SKIP_MANUAL;
-
         if (avcodec_open2(audioCodecContext, audioCodec, nullptr) < 0) {
             Logger::logError("Could not open audio codec");
             return false;
         }
-
-        // Décoder quelques frames audio pour initialiser le codec
-        AVPacket* packet = av_packet_alloc();
-        bool found_keyframe = false;
-        while (!found_keyframe) {
-            if (av_read_frame(formatContext, packet) < 0) break;
-            if (packet->stream_index == audioStreamIndex) {
-                if (packet->flags & AV_PKT_FLAG_KEY) {
-                    found_keyframe = true;
-                }
-            }
-            av_packet_unref(packet);
-        }
-        av_packet_free(&packet);
-        
-        // Revenir au début du fichier
-        av_seek_frame(formatContext, -1, 0, AVSEEK_FLAG_BACKWARD);
 
         Logger::logInfo("Audio codec initialized successfully");
     }
@@ -174,21 +165,20 @@ AVStream* VideoDecoder::getAudioStream() const {
 
 void VideoDecoder::decodeThreadFunction() {
     AVPacket* packet = av_packet_alloc();
-    double video_timebase = av_q2d(formatContext->streams[videoStreamIndex]->time_base);
-    double frame_delay = 1.0 / av_q2d(formatContext->streams[videoStreamIndex]->avg_frame_rate);
+    AVFrame* frame = av_frame_alloc();
     
     while (isRunning) {
-        std::unique_lock<std::mutex> lock(mutex);
-        if (frameQueue.size() >= MAX_QUEUE_SIZE) {
-            condition.wait(lock);
-            continue;
+        {
+            std::unique_lock<std::mutex> lock(mutex);
+            if (frameQueue.size() >= MAX_QUEUE_SIZE) {
+                condition.wait(lock);
+                continue;
+            }
         }
-        lock.unlock();
 
         int ret = av_read_frame(formatContext, packet);
         if (ret < 0) {
             if (ret == AVERROR_EOF) {
-                Logger::logInfo("End of file reached, seeking to start...");
                 av_seek_frame(formatContext, -1, 0, AVSEEK_FLAG_BACKWARD);
                 avcodec_flush_buffers(codecContext);
                 if (audioCodecContext) {
@@ -206,52 +196,87 @@ void VideoDecoder::decodeThreadFunction() {
                 continue;
             }
 
-            while (ret >= 0) {
-                AVFrame* frame = av_frame_alloc();
-                ret = avcodec_receive_frame(codecContext, frame);
-                if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-                    av_frame_free(&frame);
-                    break;
+            ret = avcodec_receive_frame(codecContext, frame);
+            if (ret >= 0) {
+                AVFrame* frame_copy = av_frame_alloc();
+                if (!frame_copy) {
+                    av_packet_unref(packet);
+                    continue;
                 }
 
-                double pts = frame->pts * video_timebase;
-                
-                if (audioManager) {
-                    double audio_clock = audioManager->getAudioClock();
-                    double diff = pts - audio_clock;
-                    
-                    if (diff > 0.1) {  // Si la vidéo est en avance de plus de 100ms
-                        SDL_Delay(static_cast<Uint32>((diff - 0.1) * 1000));
+                frame_copy->format = frame->format;
+                frame_copy->width = frame->width;
+                frame_copy->height = frame->height;
+                frame_copy->pts = frame->pts;
+
+                ret = av_frame_get_buffer(frame_copy, 32);
+                if (ret >= 0) {
+                    ret = av_frame_make_writable(frame_copy);
+                    if (ret >= 0) {
+                        ret = av_frame_copy(frame_copy, frame);
+                        if (ret >= 0) {
+                            std::unique_lock<std::mutex> lock(mutex);
+                            frameQueue.push(frame_copy);
+                            condition.notify_one();
+                        } else {
+                            av_frame_free(&frame_copy);
+                        }
+                    } else {
+                        av_frame_free(&frame_copy);
                     }
+                } else {
+                    av_frame_free(&frame_copy);
                 }
-
-                std::unique_lock<std::mutex> lock(mutex);
-                frameQueue.push(frame);
-                lock.unlock();
-                condition.notify_one();
             }
         }
-        else if (packet->stream_index == audioStreamIndex && audioCodecContext) {
+        else if (packet->stream_index == audioStreamIndex && audioCodecContext && audioManager) {
             ret = avcodec_send_packet(audioCodecContext, packet);
             if (ret < 0) {
                 av_packet_unref(packet);
                 continue;
             }
 
-            while (ret >= 0) {
-                AVFrame* frame = av_frame_alloc();
-                ret = avcodec_receive_frame(audioCodecContext, frame);
-                if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-                    av_frame_free(&frame);
-                    break;
+            ret = avcodec_receive_frame(audioCodecContext, frame);
+            if (ret >= 0) {
+                AVFrame* frame_copy = av_frame_alloc();
+                if (!frame_copy) {
+                    continue;
                 }
 
-                audioManager->pushFrame(frame);
+                frame_copy->format = frame->format;
+                frame_copy->nb_samples = frame->nb_samples;
+                frame_copy->sample_rate = frame->sample_rate;
+                frame_copy->pts = frame->pts;
+
+                // Utiliser la nouvelle API pour la disposition des canaux
+                ret = av_channel_layout_copy(&frame_copy->ch_layout, &frame->ch_layout);
+                if (ret < 0) {
+                    av_frame_free(&frame_copy);
+                    continue;
+                }
+
+                ret = av_frame_get_buffer(frame_copy, 0);
+                if (ret >= 0) {
+                    ret = av_frame_make_writable(frame_copy);
+                    if (ret >= 0) {
+                        ret = av_frame_copy(frame_copy, frame);
+                        if (ret >= 0) {
+                            audioManager->pushFrame(frame_copy);
+                        } else {
+                            av_frame_free(&frame_copy);
+                        }
+                    } else {
+                        av_frame_free(&frame_copy);
+                    }
+                } else {
+                    av_frame_free(&frame_copy);
+                }
             }
         }
 
         av_packet_unref(packet);
     }
 
+    av_frame_free(&frame);
     av_packet_free(&packet);
 }

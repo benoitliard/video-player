@@ -1,6 +1,7 @@
 #include "VideoPlayer.h"
 #include "utils/Logger.h"
 #include <signal.h>
+#include <algorithm>
 
 static VideoPlayer* g_player = nullptr;
 
@@ -69,7 +70,15 @@ void VideoPlayer::run() {
             }
         }
 
-        processFrame();
+        if (!paused) {
+            processFrame();
+        } else {
+            SDL_Delay(10);  // Éviter d'utiliser trop de CPU en pause
+        }
+
+        if (shouldReset.exchange(false)) {
+            decoder.seekToStart();
+        }
     }
 }
 
@@ -87,4 +96,24 @@ void VideoPlayer::stop() {
     isRunning = false;
     decoder.stopDecoding();
     audioManager.stop();
+}
+
+void VideoPlayer::play() {
+    paused = false;
+}
+
+void VideoPlayer::pause() {
+    paused = true;
+}
+
+void VideoPlayer::reset() {
+    shouldReset = true;
+}
+
+void VideoPlayer::setVolume(int vol) {
+    volume = std::min(100, std::max(0, vol));
+    // Appliquer le volume à l'audio
+    if (audioManager.isInitialized()) {
+        audioManager.setVolume(volume / 100.0f);
+    }
 }
