@@ -102,62 +102,50 @@ void AudioManager::audioCallback(void* userdata, Uint8* stream, int len) {
     }
 
     // Calculer le nombre d'échantillons à convertir
-    int out_samples = av_rescale_rnd(
-        swr_get_delay(audio->state.swr_ctx, frame->sample_rate) + frame->nb_samples,
-        frame->sample_rate,
-        frame->sample_rate,
-        AV_ROUND_UP
-    );
+    int out_samples = frame->nb_samples;
 
-    // Allouer le buffer temporaire
+    // Allouer le buffer temporaire avec alignement
     uint8_t* buffer = nullptr;
     int buffer_size = av_samples_get_buffer_size(
         nullptr,
         2,  // Toujours en stéréo
         out_samples,
         AV_SAMPLE_FMT_S16,
-        0
+        1  // Alignement sur 1 byte pour plus de sécurité
     );
 
-    if (buffer_size < 0) {
-        audio->state.audioQueue.pop();
-        av_frame_free(&frame);
-        return;
-    }
+    if (buffer_size > 0) {
+        buffer = reinterpret_cast<uint8_t*>(av_malloc(buffer_size));
+        if (buffer) {
+            // Convertir l'audio
+            int samples_converted = swr_convert(
+                audio->state.swr_ctx,
+                &buffer,
+                out_samples,
+                (const uint8_t**)frame->data,
+                frame->nb_samples
+            );
 
-    buffer = reinterpret_cast<uint8_t*>(av_malloc(buffer_size));
-    if (!buffer) {
-        audio->state.audioQueue.pop();
-        av_frame_free(&frame);
-        return;
-    }
+            if (samples_converted > 0) {
+                int actual_buffer_size = samples_converted * 2 * sizeof(int16_t);
+                if (actual_buffer_size <= len) {
+                    SDL_MixAudioFormat(
+                        stream,
+                        buffer,
+                        AUDIO_S16SYS,
+                        actual_buffer_size,
+                        static_cast<int>(SDL_MIX_MAXVOLUME * audio->volume)
+                    );
 
-    // Convertir l'audio
-    int samples_converted = swr_convert(
-        audio->state.swr_ctx,
-        &buffer,
-        out_samples,
-        (const uint8_t**)frame->data,
-        frame->nb_samples
-    );
-
-    if (samples_converted > 0) {
-        int actual_buffer_size = samples_converted * 2 * sizeof(int16_t);
-        SDL_MixAudioFormat(
-            stream,
-            buffer,
-            AUDIO_S16SYS,
-            std::min(len, actual_buffer_size),
-            static_cast<int>(SDL_MIX_MAXVOLUME * audio->volume)
-        );
-
-        // Mettre à jour l'horloge audio
-        if (frame->pts != AV_NOPTS_VALUE) {
-            audio->state.clock = frame->pts * av_q2d(audio->state.stream->time_base);
+                    if (frame->pts != AV_NOPTS_VALUE) {
+                        audio->state.clock = frame->pts * av_q2d(audio->state.stream->time_base);
+                    }
+                }
+            }
+            av_freep(&buffer);
         }
     }
 
-    av_freep(&buffer);
     audio->state.audioQueue.pop();
     av_frame_free(&frame);
 }

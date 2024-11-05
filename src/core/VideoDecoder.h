@@ -38,6 +38,11 @@ public:
         }
     }
 
+    void reset() {
+        flushBuffers();
+        // Réinitialiser les autres états si nécessaire
+    }
+
 private:
     void decodeThreadFunction();
     
@@ -54,5 +59,10 @@ private:
     std::condition_variable condition;
     bool isRunning;
     
-    static constexpr size_t MAX_QUEUE_SIZE = 10;
+    static constexpr size_t MAX_QUEUE_SIZE = 30;
+    static constexpr size_t MIN_FRAMES_TO_START = 5;
+
+    void flushBuffers() {
+        avcodec_flush_buffers(codecContext);
+    }
 }; 
