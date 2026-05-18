@@ -9,6 +9,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <atomic>
+#include <chrono>
 
 class VideoPlayer {
 public:
@@ -58,4 +59,11 @@ private:
     bool paused;
     int volume;
     std::atomic<bool> shouldReset;
-}; 
+
+    // PTS-based frame pacing
+    AVFrame* heldFrame = nullptr;
+    std::chrono::steady_clock::time_point ptsWallStart;
+    int64_t ptsFirstPts = AV_NOPTS_VALUE;
+    int64_t ptsLastPts = AV_NOPTS_VALUE;
+    AVRational ptsTimeBase = {0, 0};
+};

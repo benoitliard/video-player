@@ -99,25 +99,53 @@ void VideoPlayer::run() {
 
         if (shouldReset.exchange(false)) {
             decoder.seekToStart();
+            if (heldFrame) { av_frame_free(&heldFrame); heldFrame = nullptr; }
+            ptsFirstPts = AV_NOPTS_VALUE;
+            ptsLastPts = AV_NOPTS_VALUE;
         }
     }
 }
 
 void VideoPlayer::processFrame() {
-    AVFrame* frame = decoder.getNextFrame();
-    if (frame) {
-        renderer.renderFrame(frame);
-        av_frame_free(&frame);
-    } else {
-        SDL_Delay(1);  // Avoid busy waiting
+    if (ptsTimeBase.num == 0) {
+        AVStream* vs = decoder.getVideoStream();
+        if (vs) ptsTimeBase = vs->time_base;
     }
+
+    if (!heldFrame)
+        heldFrame = decoder.getNextFrame();
+
+    if (!heldFrame) {
+        SDL_Delay(1);
+        return;
+    }
+
+    if (heldFrame->pts != AV_NOPTS_VALUE && ptsTimeBase.num != 0) {
+        // Detect loop: PTS jumped backwards (decoder seeked to start)
+        if (ptsFirstPts == AV_NOPTS_VALUE || heldFrame->pts < ptsLastPts) {
+            ptsFirstPts = heldFrame->pts;
+            ptsWallStart = std::chrono::steady_clock::now();
+        }
+        ptsLastPts = heldFrame->pts;
+        double frameSec = static_cast<double>(heldFrame->pts - ptsFirstPts)
+                        * ptsTimeBase.num / ptsTimeBase.den;
+        auto target = ptsWallStart
+                    + std::chrono::microseconds(static_cast<int64_t>(frameSec * 1e6));
+        if (std::chrono::steady_clock::now() < target)
+            return;
+    }
+
+    renderer.renderFrame(heldFrame);
+    av_frame_free(&heldFrame);
+    heldFrame = nullptr;
 }
 
 void VideoPlayer::stop() {
     isRunning = false;
+    if (heldFrame) { av_frame_free(&heldFrame); heldFrame = nullptr; }
     decoder.stopDecoding();
     audioManager.stop();
-    wsController.stop();  // Arrêter le WebSocketController
+    wsController.stop();
 }
 
 void VideoPlayer::play() {
